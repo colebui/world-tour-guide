@@ -1,0 +1,24 @@
+# Node / Firebase
+node_modules/
+functions/lib/
+*.log
+.firebase/
+
+# Secrets — never commit keys
+**/Secrets.swift
+.env
+.env.local
+**/.secret.local
+# ...but keep the committed templates
+!**/.secret.local.example
+!**/Secrets.example.swift
+
+# macOS
+.DS_Store
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+*.xcscmblueprint
