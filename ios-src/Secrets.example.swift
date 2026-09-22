@@ -10,4 +10,11 @@ enum Secrets {
     // https://getplacecontent-xxxxxxxxxx-uc.a.run.app
     // (Firebase prints this after `firebase deploy --only functions`.)
     static let backendURL = "YOUR_GET_PLACE_CONTENT_FUNCTION_URL"
+
+    // The deployed streaming (SSE) Cloud Function URL for streamPlaceContent.
+    static let backendStreamURL = "YOUR_STREAM_PLACE_CONTENT_FUNCTION_URL"
+
+    // RevenueCat PUBLIC Apple SDK key (starts with "appl_"), from the RevenueCat dashboard →
+    // Project → API keys. Until set, in-app purchases are disabled (app skips RevenueCat config).
+    static let revenueCatAPIKey = "YOUR_REVENUECAT_PUBLIC_APPLE_KEY"
 }

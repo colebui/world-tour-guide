@@ -2,177 +2,194 @@
 
 > **This file is the canonical context document.** It explains what the app is, the full
 > stack, and **how every component connects**. Paste it into a new chat to give Claude full
-> project context cheaply. Companion files: `prompts/place_content_prompt.md` (the exact LLM
-> request/response contract) and the build plan (phased implementation steps).
+> project context cheaply. Companion file: `prompts/place_content_prompt.md` (the LLM
+> request/response contract). Status/todo list is at the bottom.
 
 ## What it is
 
-An iOS tour-guide app: a Google-Maps-style **MapKit** map shows what's around you and gives
-fun, accurate descriptions, history, stories, photos, and audio narration of places — either
-on **tap (manual mode)** or **automatically as you walk (auto mode, the default)**.
+An iOS tour-guide app: a Google-Maps-style **MapKit** map shows tour-worthy places around you
+and, when you tap one, streams a fun, accurate guide — description, history, stories, fun facts,
+photos, and **natural audio narration**. You can get **directions** (walk/drive/transit) and save
+places into **to-do lists**. Today it's **tap/search driven**; proactive "auto mode" (narrate as
+you walk) is planned (needs a physical device + paid Apple account).
 
-## Tech stack (decided)
+## Tech stack
 
 | Concern | Choice | Notes |
 |---|---|---|
-| App framework | **SwiftUI** (iOS) | Native MapKit + bottom-sheet support |
-| Map display | **Apple MapKit** | Free tiles, no per-render billing |
-| POI data | **Google Places API** | Nearby search + stable `place_id` (the cache key) |
-| Location / triggers | **Core Location** | Region monitoring + significant-location-change |
-| Backend / DB / auth / storage | **Firebase** | Firestore + Cloud Functions + Storage + Auth |
-| Content generation | **OpenAI API** | Structured Outputs JSON; contract in prompt file |
-| Fact grounding | **Wikipedia / Wikidata** | Real facts → low hallucination + citations |
-| Photos | **Wikimedia Commons / Google Places Photos** | Real licensed images — never AI-generated |
-| Text-to-speech | **AVSpeechSynthesizer** (v1) → OpenAI TTS / ElevenLabs (upgrade) | Hands-free audio guide |
+| App framework | **SwiftUI** (iOS), bundle `com.cole.WorldGuide` | Synced from `ios-src/` via `scripts/install-ios-files.sh` |
+| Map display | **Apple MapKit** | Free tiles; in-app route lines |
+| POI data | **Google Places API (New)** | `searchNearby` (attraction-biased) + `searchText` |
+| Autocomplete | **MKLocalSearchCompleter** (Apple) | Free, nearby-biased type-ahead |
+| Directions | **Apple `MKDirections`** (walk/drive) + **Google Routes API** (transit) | In-app polyline + Apple Maps handoff |
+| Location | **Core Location** | When-in-use; recenter button |
+| Backend / DB / storage | **Firebase** (`your-firebase-project-id`, Blaze) | Firestore + Cloud Functions + Storage |
+| Content generation | **OpenAI** (gpt-4o, JSON mode, **streamed**) | Grounded in Wikipedia |
+| Fact grounding | **Wikipedia / Wikidata** | Geosearch + name-match → low hallucination |
+| Photos | **Wikimedia Commons** | Real licensed images (URLs hot-linked) |
+| Text-to-speech | **OpenAI TTS** (standard) / **ElevenLabs** (premium) | Tiered by review count; cached MP3 in Storage |
+| To-do storage | **On-device** (UserDefaults) | Cloud sync planned with Auth |
 
 ## System connection map
 
 ```
-┌─────────────────────────── iOS App (SwiftUI) ───────────────────────────┐
-│                                                                          │
-│  LocationManager ──► MapViewModel ──► MapScreen (MapKit map + pins)       │
-│   (Core Location)        │                  │                            │
-│                          │                  ▼                            │
-│                          │           BottomSheetView ──► PlaceDetailView │
-│                          │                  │            (renders sections)│
-│                          ▼                  ▼                            │
-│                   PlacesService      ContentService     SpeechService    │
-│                   (Google Places)    (calls backend)    (TTS)            │
-│                          │                  │                            │
-└──────────────────────────┼──────────────────┼───────────────────────────┘
-                           │ (bundle-restricted│ HTTPS (callable function)
-                           │  Places key)      │
-                           ▼                  ▼
-                 ┌─────────────────┐   ┌──────────────────────────────────┐
-                 │ Google Places   │   │  Firebase Cloud Function          │
-                 │ Nearby Search   │   │  getPlaceContent(place_id, ...)   │
-                 └─────────────────┘   │                                  │
-                                       │  1. Firestore lookup by place_id │◄─┐
-                                       │  2. miss → Wikipedia/Wikidata     │  │ cache
-                                       │  3. → OpenAI (prompt file)        │  │
-                                       │  4. → fetch photos                │  │
-                                       │  5. → write Firestore + Storage ──┼──┘
-                                       └──────────┬───────────────────────┘
-                                                  │  (OpenAI key = secret, backend only)
-                          ┌───────────────────────┼───────────────┐
-                          ▼                       ▼               ▼
-                    OpenAI API            Wikipedia/Wikidata   Photo sources
-                                                              (Commons / Places Photos)
+┌──────────────────────────── iOS App (SwiftUI, ios-src/) ─────────────────────────────┐
+│                                                                                       │
+│  LocationManager ─┐                                  SearchCompleter (MKLocalSearch)   │
+│  (Core Location)  ▼                                          │ suggestions             │
+│            ┌────────────┐   pins / search / route / todo     ▼                         │
+│            │ MapScreen  │◄────────────► MapViewModel ◄──── PlacesService (Google)       │
+│            │ (MapKit)   │                   │  ▲             searchNearby / searchText  │
+│            └────────────┘                   │  │                                        │
+│              category & saved-bookmark pins │  │ PlaceContent / PartialPlaceContent     │
+│                    │ tap                     │  │                                        │
+│                    ▼                         │  ├── ContentService ──► (SSE stream) ──┐  │
+│            BottomSheetView (peek/40%/full)   │  ├── DirectionsService ─► Google Routes│  │
+│             ├─ tabs: Guide/Recent/Explore/Saved │  │   (transit polyline)             │  │
+│             ├─ PlaceDetailView (skeletons →  │  └── SpeechService (AVAudioPlayer ─────┼──┼─► cached MP3
+│             │   sections, photos, Listen,    │        download+play, AVSpeech fallback)│  │   (Storage)
+│             │   Directions menu+ETAs, Save)  │                                        │  │
+│             └─ TodoView / TodoListDetailView ─► TodoStore (UserDefaults, named lists)  │  │
+└───────────────────────────────────────────────────────────────────────────────────────┼──┘
+                                                  │ HTTPS POST (URLSession)               │ GET mp3
+                                                  ▼                                       │
+        ┌──────────────── Firebase Cloud Functions (functions/, TypeScript) ─────────────┴───┐
+        │  getPlaceContent (JSON)  ·  streamPlaceContent (SSE: partial→partial→complete)      │
+        │                                                                                     │
+        │   1. Firestore lookup places/{place_id} ──► cache hit returns stored doc ◄────────┐ │
+        │   2. miss: fetchReviewCount (Google Routes/Places, server key) → tier             │ │
+        │   3.       fetchWikipediaGrounding → OpenAI (stream, gpt-4o)                       │ │ cache
+        │   4.       buildRecord: fetchPhotos (Commons) ∥ generateAndStoreAudio (TTS→Storage)│ │
+        │   5.       write places/{place_id} (content+photos+audio_url+tier) ───────────────┘ │
+        └───────┬───────────────┬───────────────┬────────────────┬───────────────┬───────────┘
+                ▼               ▼               ▼                ▼               ▼
+           OpenAI API     ElevenLabs      Wikipedia/Wikidata  Wikimedia    Firebase Storage
+        (text + std TTS) (premium TTS)     (grounding)        (photos)     (audio/{id}.mp3)
 ```
 
-**The one rule:** the **OpenAI key lives only in the backend** (Cloud Functions secret). The
-**Google Places key** may live on-device **only if** restricted to this app's bundle ID +
-Places API. The app never calls OpenAI directly.
+**Key rule:** the **OpenAI, ElevenLabs, and server-Google keys live only in the backend**
+(Functions secrets). The **on-device Google key** is bundle-restricted (Places + Routes). The app
+never calls OpenAI/ElevenLabs directly.
 
-## Component responsibilities
+## Component responsibilities (current files)
 
 | Component | Responsibility |
 |---|---|
-| `LocationManager` | Wraps `CLLocationManager`; auth, current location, (Phase 4) geofences |
-| `PlacesService` | Google Places **Nearby Search** → `[Place]` with `place_id`, name, coords, types |
-| `ContentService` | Calls `getPlaceContent` Cloud Function; returns `PlaceContent` |
-| `SpeechService` | Speaks `tour_guide_intro`; mute toggle; background audio |
-| `MapViewModel` | Holds nearby places, selected place, its content, current mode |
-| `MapScreen` / `BottomSheetView` / `PlaceDetailView` / `ExploreView` | UI |
-| `getPlaceContent` (backend) | Cache-first: Firestore → Wikipedia → OpenAI → photos → store → return |
+| `LocationManager` | `CLLocationManager` wrapper; when-in-use auth, current location |
+| `PlacesService` | Google `searchNearby` (attraction `includedTypes`) + `searchText` → `[Place]` |
+| `SearchCompleter` | `MKLocalSearchCompleter` type-ahead suggestions, region-biased |
+| `ContentService` | Calls `streamPlaceContent` (SSE) → `ContentEvent` stream; `getPlaceContent` fallback |
+| `DirectionsService` | Google Routes API transit → decoded `MKPolyline` + summary |
+| `SpeechService` | Downloads + plays cached MP3 (`AVAudioPlayer`); `AVSpeechSynthesizer` fallback; mute |
+| `TodoStore` | Named to-do lists in UserDefaults; reorder, check, save-to-list |
+| `MapViewModel` | Nearby/selected/streaming content, route state + ETAs, search, recent |
+| `MapScreen` | MapKit map, category/saved pins, route polyline, search bar, locate, peek-detent sheet |
+| `BottomSheetView` | Peek bar + tabbed sheet (Guide/Recent/Explore/Saved), mute, auto-narrate |
+| `PlaceDetailView` | Renders sections w/ skeletons; actions (Listen, Directions menu+ETAs, Navigate, Save) |
+| `TodoView` / `TodoListDetailView` | Lists screen + per-list checkboxes/reorder/add-highlighted |
+| `Place` / `PlaceCategory` | POI model + type→pin icon/tint mapping |
+| `PlaceContent` / `PartialPlaceContent` | Strict + all-optional (streaming) content models |
+| `Shimmer` / `SkeletonBar` | Loading placeholders |
+| backend `index.ts` | The two endpoints + `decideTier`/`buildRecord`/`createCompletion` |
+| backend `wikipedia.ts` / `photos.ts` / `tts.ts` / `placeDetails.ts` / `prompt.ts` | Grounding / photos / TTS+Storage / review-count / prompt |
 
 ## Integration contracts
 
-**App → backend** (`getPlaceContent`, Firebase HTTPS function via `URLSession`)
-- _Phase 1 note:_ implemented as a plain HTTPS `onRequest` endpoint so the iOS app needs
-  **no Firebase SDK** yet (just `URLSession`). Switches to a callable function with App
-  Check in Phase 5 when Auth lands.
-- Request: `{ place_id, name, types[], lat, lng, locality }`
-- Response: a `PlaceContent` JSON object — **schema defined in `prompts/place_content_prompt.md`**
-  (always-present: `summary`, `tour_guide_intro`, `notification_blurb`, `notify_worthy`, `tone`,
-  `richness_score`, `tags`; optional rich sections; `photos[]` with attribution).
+**App → backend** (`URLSession`, no Firebase SDK)
+- `streamPlaceContent` (primary, **SSE**): POST `{ place_id, name, types[], lat, lng, locality }`
+  → events `data: {type:"partial", content}` … then `data: {type:"complete", source, content}`.
+- `getPlaceContent` (fallback, JSON): same body → `{ source, content }`.
+- `content` schema in `prompts/place_content_prompt.md`, plus `photos[]`, `audio_url`, `tier`,
+  `review_count`, `meta{}`.
 
-**App → Google Places** (on-device, bundle-restricted key)
-- Nearby Search around the user → POIs with `place_id` (the cache key) for pins.
+**App → Google (on-device key)**: `searchNearby` (attraction `includedTypes`) for pins;
+`searchText` for the search bar; **Routes API** for transit polylines. Apple `MKDirections` does
+walk/drive locally (free).
 
-**Backend → OpenAI / Wikipedia / Photos** — see prompt file for the exact OpenAI system+user
-messages and JSON schema. Wikipedia extract is injected as grounding; `photo_queries` from the
-model drive photo retrieval.
+**Backend → providers**: Place Details `userRatingCount` (server Google key) → tier; Wikipedia
+extract → OpenAI (streamed); `photo_queries` → Commons; narration script → OpenAI/ElevenLabs →
+Firebase Storage (`audio/{place_id}.mp3`, public).
 
-## Sequence flows
+## Key flows
 
-**Cache hit (most requests):** App taps place → `ContentService` → `getPlaceContent` →
-Firestore has `places/{place_id}` → returns stored content (fast, $0).
+- **Cache hit:** tap → `streamPlaceContent` → Firestore has doc → one `complete` event (~0.13s).
+- **Cache miss:** tier (review count) → Wikipedia → **OpenAI streamed** (summary ~2–3s, sections
+  fill in, skeletons for the rest) → photos + audio in parallel → write cache → `complete`.
+- **Tiered TTS:** `userRatingCount > 10000` ⇒ premium (ElevenLabs) else standard (OpenAI); whole
+  guide is narrated, chunked under the TTS char limit, MP3 cached in Storage.
+- **Directions:** open chooser → compute Walk/Drive (Apple) + Transit (Google) ETAs once, cached →
+  pick a mode → draw polyline + minimize sheet; **Navigate** hands off to Apple Maps.
 
-**Cache miss (first visitor):** App → `getPlaceContent` → Firestore empty → fetch
-Wikipedia/Wikidata → call OpenAI with prompt → fetch photos for `photo_queries` → write
-`places/{place_id}` (+ photos to Storage) → return. Everyone after hits the cache.
-
-**Auto-mode trigger (Phase 4):** `LocationManager` enters a geofence around a `notify_worthy`
-place → if foreground, auto-open sheet + speak intro (unless muted); if background, push
-notification using `notification_blurb`. Cooldown prevents re-triggering the same place.
-
-## Data model (Firestore)
+## Data model
 
 ```
-places/{place_id}          # the cache; key = Google place_id
-  name, tone, summary, tour_guide_intro, notification_blurb, notify_worthy,
-  richness_score, tags, history?, fun_facts?, stories?, details?, significance?,
-  visiting_tips?, nearby_theme?, confidence, uncertain_claims[],
-  photos: [{ url, source, attribution, license }],
-  meta: { prompt_version, model, generated_at, sources[] }
+Firestore  places/{place_id}     # the cache; key = Google place_id
+  name, tone, summary, tour_guide_intro, notification_blurb, notify_worthy, richness_score,
+  tags, history?, fun_facts?, stories?, details?, significance?, visiting_tips?, confidence,
+  photo_queries[], photos[{url,source,attribution,license}],
+  audio_url, tier, review_count,
+  meta{ prompt_version, model, generated_at, sources[] }
 
-users/{uid}                # mode: auto|manual, muted, notifications_enabled, history[], language
-popular_places/{place_id}  # view_count, last_viewed → drives cache warming
+On-device (UserDefaults)  todo.lists.v1   # [TodoList{ id, name, lastModified, items[TodoItem] }]
 ```
-
-`meta.prompt_version` + `meta.model` let content be regenerated as the prompt improves.
-
-## Modes
-
-- **Auto (default):** on open, fetch nearest notable place → show + speak (unless muted);
-  while moving, surface content automatically; background push for notify-worthy places.
-- **Manual:** pins show, but content is fetched **only on tap**. Cheapest; user in control.
-- **Gating:** auto-triggers/notifications fire only when `notify_worthy == true`
-  (≈ `richness_score >= 55`, excluding routine POIs) — keeps notifications rare and delightful.
-
-## Location strategy (battery + cost)
-
-- Significant-location-change + region monitoring, **not** continuous GPS.
-- iOS allows only **20 active geofences** → maintain a dynamic ring around nearest notable
-  places, re-registering as the user moves.
-- **Cache-warming**: pre-fetch nearby `place_id`s so auto mode feels instant (hides the
-  first-visitor cold-cache delay).
+`meta.prompt_version`/`model` allow selective regeneration. (Planned Firestore: `users/{uid}`,
+`popular_places/{place_id}` for Auth + cache-warming.)
 
 ## Security / keys
 
 | Key | Location | Restriction |
 |---|---|---|
-| OpenAI | Backend only (Functions secret) | Never in the app binary |
-| Google Places | On-device | Bundle ID + Places API only |
-| Firebase config | `GoogleService-Info.plist` in app | Public-safe; protect data via Firestore rules |
+| OpenAI, ElevenLabs | Backend only (Functions secrets) | Never in the app binary |
+| Google (server) | Backend secret `GOOGLE_API_KEY` | Places/Routes; for review-count lookup |
+| Google (on-device) | `Secrets.swift` (gitignored) | Bundle ID + Places(New)/Routes; sends `X-Ios-Bundle-Identifier` |
+
+Firestore rules deny all direct client access (app only talks to Functions, which use Admin SDK).
 
 ## Repo file map
 
 ```
 world-guide/
   ARCHITECTURE.md                      # this file — canonical context
+  SETUP.md                             # account/Xcode setup steps
   prompts/place_content_prompt.md      # LLM request/response contract + JSON schema
-  ios-src/                             # canonical Swift sources (synced into the Xcode app
-                                       #   via scripts/install-ios-files.sh — edit these)
-    WorldGuideApp.swift, Secrets.swift
-    Models/PlaceContent.swift, Place.swift, TodoItem.swift
-    Services/LocationManager.swift, PlacesService.swift, ContentService.swift,
-             SpeechService.swift, TodoStore.swift
-    ViewModels/MapViewModel.swift
-    Views/MapScreen.swift, BottomSheetView.swift, PlaceDetailView.swift, TodoView.swift
-  WorldGuide/                          # generated Xcode project (build target)
+  ios-src/                             # canonical Swift sources (edit here, then run installer)
+    WorldGuideApp.swift, Secrets.swift (gitignored), Secrets.example.swift
+    Models/      Place.swift, PlaceContent.swift, TodoItem.swift, TodoList.swift, TransportMode.swift
+    Services/    LocationManager, PlacesService, ContentService, DirectionsService,
+                 SearchCompleter, SpeechService, TodoStore .swift
+    ViewModels/  MapViewModel.swift
+    Views/       MapScreen, BottomSheetView, PlaceDetailView, TodoView, Shimmer .swift
+  scripts/install-ios-files.sh         # copies ios-src/ → Xcode target (synchronized folders)
+  WorldGuide/                          # generated Xcode project (build target) + Info.plist
   functions/                           # Firebase Cloud Functions (TypeScript)
-    src/index.ts                       # getPlaceContent (+ later TTS, photos)
-  firestore.rules
+    src/ index.ts, prompt.ts, wikipedia.ts, photos.ts, tts.ts, placeDetails.ts
+  firebase.json, .firebaserc, firestore.rules
 ```
 
-## Build phases (summary; full steps in the plan file)
+---
 
-0. **Setup** — Xcode + Firebase CLI; create SwiftUI project; wire Google Cloud + Firebase (Blaze); store OpenAI secret. ✅ done
-1. **Walking skeleton** — map + tap → `getPlaceContent` (cache + OpenAI) → bottom sheet. Simulator. ✅ done
-2. **Rich content** — Wikipedia grounding + photos (Wikimedia Commons) + all sections + Explore/Recent tabs. ✅ done
-3. **TTS** — narrate `tour_guide_intro` (AVSpeechSynthesizer) + mute + background audio. ✅ done
-4. **Auto mode** — geofencing + notifications (needs physical device + paid Apple account).
-5. **Polish** — Auth (Sign in with Apple), analytics, cache warming, cost controls.
-```
+# Status / Todo
+
+### ✅ Built & deployed (verified)
+- [x] **Backend**: cache-first `getPlaceContent` + **streaming** `streamPlaceContent` (SSE)
+- [x] **MapKit map** + Google Places pins, **biased to attractions** (`includedTypes`)
+- [x] **Category pin icons** (monument/museum/religious/park/nature/food/attraction) + **saved bookmark pins**
+- [x] **Search bar**: Google `searchText` + **Apple autocomplete**, **"Search this area"**, **locate button**
+- [x] **Bottom sheet**: minimized **peek bar** (3 detents) + tabs **Guide / Recent / Explore / Saved**
+- [x] **Streaming guide** with **shimmer skeleton** placeholders (text fills in as generated)
+- [x] **Wikipedia grounding** + **Wikimedia photos** (carousel w/ attribution)
+- [x] **Tiered TTS**: review-count → premium **ElevenLabs** / standard **OpenAI**, **whole-guide** narration, cached MP3 in Storage
+- [x] **Audio playback** via `AVAudioPlayer` (download+cache), on-device-voice fallback, **mute / unmute-plays**
+- [x] **Directions**: Walk/Drive (Apple) + **Transit (Google Routes)**, **per-mode ETAs**, in-app route line, **Navigate** handoff, minimize-on-select
+- [x] **To-do lists** (on-device): named, reorderable lists + items, checkboxes, save-to-list prompt, add-highlighted
+
+### 🔜 Planned / not yet built
+- [ ] **Auto mode** — geofencing + push notifications (needs physical iPhone + paid Apple Developer acct)
+- [ ] **Premium TEXT model** — currently `PREMIUM_MODEL = gpt-4o` (premium upgrades voice only); pick a bigger model
+- [ ] **Auth** (Sign in with Apple) + **cloud-synced to-do** / user settings (`users/{uid}`)
+- [ ] **Analytics + cache warming** (`popular_places`, pre-generate hot spots)
+- [ ] **Cost guardrails** — budget alerts, generation rate-limit; watch **ElevenLabs free tier (~10k chars/mo)**
+- [ ] **Offline / image re-hosting** — optionally store photo bytes in Storage (currently hot-link Commons)
+
+### ⚠️ Ops
+- [ ] **Commit & push the backlog** — only the initial commit is on `world-tour-guide`; ~40 files of work are local-only
