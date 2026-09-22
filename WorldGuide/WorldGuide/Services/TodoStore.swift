@@ -1,102 +1,152 @@
 import Foundation
 import Combine
-import CoreLocation
 import SwiftUI   // for Array.move(fromOffsets:toOffset:)
+import FirebaseAuth
+import FirebaseFirestore
 
-/// On-device store for the to-do list. Persists to UserDefaults as JSON and groups saved
-/// places by city (resolved via reverse geocoding). Cloud sync arrives in Phase 5.
+/// Cloud-synced store for named to-do lists, kept at `users/{uid}/lists/{listId}` in Firestore.
+/// Firestore's on-device cache makes this offline-first (reads/writes work offline and sync later),
+/// and a snapshot listener keeps `lists` live across devices. The public API is unchanged from the
+/// old UserDefaults version, so the views don't change. Mutations update `lists` optimistically and
+/// write through to Firestore; the listener reconciles.
 @MainActor
 final class TodoStore: ObservableObject {
-    @Published private(set) var items: [TodoItem] = [] {
-        didSet { persist() }
+    @Published private(set) var lists: [TodoList] = []
+
+    private let db = Firestore.firestore()
+    private var listener: ListenerRegistration?
+    private var authHandle: AuthStateDidChangeListenerHandle?
+    private var uid: String?
+
+    init() {
+        // Re-bind whenever the signed-in user changes (anonymous → linked keeps the same uid, so
+        // lists stay; a true account switch re-points to that user's lists).
+        authHandle = Auth.auth().addStateDidChangeListener { [weak self] _, user in
+            Task { @MainActor in self?.rebind(to: user?.uid) }
+        }
+        rebind(to: Auth.auth().currentUser?.uid)
     }
 
-    private let key = "todo.items.v1"
-    private let geocoder = CLGeocoder()
-
-    init() { load() }
-
-    // MARK: - Queries
-
-    func contains(placeID: String) -> Bool {
-        items.contains { $0.id == placeID }
+    deinit {
+        listener?.remove()
+        if let authHandle { Auth.auth().removeStateDidChangeListener(authHandle) }
     }
 
-    /// Distinct cities with their saved-item counts, sorted by name.
-    var cities: [(city: String, count: Int)] {
-        Dictionary(grouping: items, by: { $0.city })
-            .map { (city: $0.key, count: $0.value.count) }
-            .sorted { $0.city < $1.city }
+    private func listsRef(_ uid: String) -> CollectionReference {
+        db.collection("users").document(uid).collection("lists")
     }
 
-    func items(in city: String) -> [TodoItem] {
-        items.filter { $0.city == city }.sorted { $0.order < $1.order }
+    private func rebind(to newUid: String?) {
+        guard newUid != uid else { return }
+        listener?.remove(); listener = nil
+        uid = newUid
+        lists = []
+        guard let uid = newUid else { return }
+        migrateLocalIfNeeded(to: uid)
+        listener = listsRef(uid).order(by: "order").addSnapshotListener { [weak self] snap, error in
+            if let error { print("todo listener error: \(error)"); return }
+            let decoded = snap?.documents.compactMap { try? $0.data(as: TodoList.self) } ?? []
+            Task { @MainActor in self?.lists = decoded }
+        }
     }
 
-    // MARK: - Mutations
+    // MARK: - Queries (unchanged)
 
-    func add(_ place: Place) {
-        guard !contains(placeID: place.id) else { return }
-        let order = (items.map(\.order).max() ?? -1) + 1
-        let item = TodoItem(
-            id: place.id, name: place.name,
-            lat: place.coordinate.latitude, lng: place.coordinate.longitude,
-            types: place.types, city: "Saved", isDone: false, order: order
-        )
-        items.append(item)
-        Task { await resolveCity(for: place.id, coordinate: place.coordinate) }
+    var listsByRecent: [TodoList] { lists.sorted { $0.lastModified > $1.lastModified } }
+    func contains(placeID: String) -> Bool { lists.contains { $0.items.contains { $0.id == placeID } } }
+    func list(_ id: UUID) -> TodoList? { lists.first { $0.id == id } }
+
+    // MARK: - List mutations
+
+    @discardableResult
+    func createList(name: String) -> TodoList {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let list = TodoList(name: trimmed.isEmpty ? "My List" : trimmed)
+        lists.append(list)                       // optimistic, so an immediate add() finds it
+        write(list, order: lists.count - 1)
+        return list
     }
 
-    func remove(placeID: String) {
-        items.removeAll { $0.id == placeID }
+    func moveLists(from source: IndexSet, to destination: Int) {
+        lists.move(fromOffsets: source, toOffset: destination)
+        writeOrder()
     }
 
-    func toggleDone(_ item: TodoItem) {
-        guard let idx = items.firstIndex(where: { $0.id == item.id }) else { return }
-        items[idx].isDone.toggle()
+    func deleteLists(at offsets: IndexSet) {
+        let removed = offsets.map { lists[$0] }
+        lists.remove(atOffsets: offsets)
+        removed.forEach { delete($0.id) }
+        writeOrder()
     }
 
-    func move(city: String, from source: IndexSet, to destination: Int) {
-        var ordered = items(in: city)
-        ordered.move(fromOffsets: source, toOffset: destination)
-        for (i, it) in ordered.enumerated() {
-            if let idx = items.firstIndex(where: { $0.id == it.id }) {
-                items[idx].order = i
+    // MARK: - Item mutations
+
+    func add(_ place: Place, toListID id: UUID) {
+        update(id) { list in
+            if !list.items.contains(where: { $0.id == place.id }) {
+                list.items.append(TodoItem(place: place))
             }
         }
     }
 
-    func delete(city: String, at offsets: IndexSet) {
-        let ordered = items(in: city)
-        let ids = offsets.map { ordered[$0].id }
-        items.removeAll { ids.contains($0.id) }
+    func removeItem(placeID: String, fromListID id: UUID) {
+        update(id) { $0.items.removeAll { $0.id == placeID } }
     }
 
-    // MARK: - City resolution (free, Apple reverse geocoding)
-
-    private func resolveCity(for id: String, coordinate: CLLocationCoordinate2D) async {
-        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        guard let placemark = try? await geocoder.reverseGeocodeLocation(location).first else { return }
-        let city = placemark.locality
-            ?? placemark.subAdministrativeArea
-            ?? placemark.administrativeArea
-            ?? "Saved"
-        if let idx = items.firstIndex(where: { $0.id == id }) {
-            items[idx].city = city
+    func toggleDone(placeID: String, inListID id: UUID) {
+        update(id) { list in
+            if let j = list.items.firstIndex(where: { $0.id == placeID }) {
+                list.items[j].isDone.toggle()
+            }
         }
     }
 
-    // MARK: - Persistence
+    func moveItems(inListID id: UUID, from source: IndexSet, to destination: Int) {
+        update(id) { $0.items.move(fromOffsets: source, toOffset: destination) }
+    }
 
-    private func persist() {
-        if let data = try? JSONEncoder().encode(items) {
-            UserDefaults.standard.set(data, forKey: key)
+    func deleteItems(inListID id: UUID, at offsets: IndexSet) {
+        update(id) { $0.items.remove(atOffsets: offsets) }
+    }
+
+    // MARK: - Internals
+
+    private func update(_ id: UUID, _ mutate: (inout TodoList) -> Void) {
+        guard let i = lists.firstIndex(where: { $0.id == id }) else { return }
+        mutate(&lists[i])
+        lists[i].lastModified = Date()
+        write(lists[i], order: i)
+    }
+
+    private func write(_ list: TodoList, order: Int) {
+        guard let uid else { return }
+        do {
+            var data = try Firestore.Encoder().encode(list)
+            data["order"] = order
+            listsRef(uid).document(list.id.uuidString).setData(data)
+        } catch { print("todo write error: \(error)") }
+    }
+
+    private func delete(_ id: UUID) {
+        guard let uid else { return }
+        listsRef(uid).document(id.uuidString).delete()
+    }
+
+    private func writeOrder() {
+        guard let uid else { return }
+        for (i, list) in lists.enumerated() {
+            listsRef(uid).document(list.id.uuidString).setData(["order": i], merge: true)
         }
     }
 
-    private func load() {
+    /// One-time import of any pre-cloud UserDefaults lists into this user's Firestore collection.
+    private func migrateLocalIfNeeded(to uid: String) {
+        let key = "todo.lists.v1", migratedKey = "todo.migrated.v1"
+        guard !UserDefaults.standard.bool(forKey: migratedKey) else { return }
+        UserDefaults.standard.set(true, forKey: migratedKey)
         guard let data = UserDefaults.standard.data(forKey: key),
-              let decoded = try? JSONDecoder().decode([TodoItem].self, from: data) else { return }
-        items = decoded
+              let local = try? JSONDecoder().decode([TodoList].self, from: data), !local.isEmpty else { return }
+        for (i, list) in local.enumerated() { write(list, order: i) }
+        UserDefaults.standard.removeObject(forKey: key)
     }
 }

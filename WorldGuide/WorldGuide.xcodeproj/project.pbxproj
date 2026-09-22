@@ -6,6 +6,14 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		124E735F2FEC871E007ACB07 /* FirebaseAppCheck in Frameworks */ = {isa = PBXBuildFile; productRef = 124E735E2FEC871E007ACB07 /* FirebaseAppCheck */; };
+		124E73612FEC871E007ACB07 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 124E73602FEC871E007ACB07 /* FirebaseAuth */; };
+		124E73632FEC871E007ACB07 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 124E73622FEC871E007ACB07 /* FirebaseFirestore */; };
+		124E73662FEC88CE007ACB07 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = 124E73652FEC88CE007ACB07 /* RevenueCat */; };
+		124E73682FEC8AE0007ACB07 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 124E73672FEC8AE0007ACB07 /* GoogleService-Info.plist */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		124E728B2FDF6E37007ACB07 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -27,6 +35,7 @@
 		124E727B2FDF6E35007ACB07 /* WorldGuide.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WorldGuide.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		124E728A2FDF6E37007ACB07 /* WorldGuideTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WorldGuideTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		124E72942FDF6E37007ACB07 /* WorldGuideUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = WorldGuideUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		124E73672FEC8AE0007ACB07 /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -52,6 +61,10 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				124E73662FEC88CE007ACB07 /* RevenueCat in Frameworks */,
+				124E735F2FEC871E007ACB07 /* FirebaseAppCheck in Frameworks */,
+				124E73612FEC871E007ACB07 /* FirebaseAuth in Frameworks */,
+				124E73632FEC871E007ACB07 /* FirebaseFirestore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -75,6 +88,7 @@
 		124E72722FDF6E35007ACB07 = {
 			isa = PBXGroup;
 			children = (
+				124E73672FEC8AE0007ACB07 /* GoogleService-Info.plist */,
 				124E727D2FDF6E35007ACB07 /* WorldGuide */,
 				124E728D2FDF6E37007ACB07 /* WorldGuideTests */,
 				124E72972FDF6E37007ACB07 /* WorldGuideUITests */,
@@ -112,6 +126,10 @@
 			);
 			name = WorldGuide;
 			packageProductDependencies = (
+				124E735E2FEC871E007ACB07 /* FirebaseAppCheck */,
+				124E73602FEC871E007ACB07 /* FirebaseAuth */,
+				124E73622FEC871E007ACB07 /* FirebaseFirestore */,
+				124E73652FEC88CE007ACB07 /* RevenueCat */,
 			);
 			productName = WorldGuide;
 			productReference = 124E727B2FDF6E35007ACB07 /* WorldGuide.app */;
@@ -195,6 +213,10 @@
 			);
 			mainGroup = 124E72722FDF6E35007ACB07;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				124E735D2FEC871E007ACB07 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				124E73642FEC88CE007ACB07 /* XCRemoteSwiftPackageReference "purchases-ios" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 124E727C2FDF6E35007ACB07 /* Products */;
 			projectDirPath = "";
@@ -212,6 +234,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				124E73682FEC8AE0007ACB07 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -393,8 +416,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = WorldGuide/WorldGuide.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = S6MHP2LH57;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
@@ -426,8 +451,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = WorldGuide/WorldGuide.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = S6MHP2LH57;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
@@ -574,6 +601,48 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		124E735D2FEC871E007ACB07 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.15.0;
+			};
+		};
+		124E73642FEC88CE007ACB07 /* XCRemoteSwiftPackageReference "purchases-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/RevenueCat/purchases-ios";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.79.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		124E735E2FEC871E007ACB07 /* FirebaseAppCheck */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 124E735D2FEC871E007ACB07 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAppCheck;
+		};
+		124E73602FEC871E007ACB07 /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 124E735D2FEC871E007ACB07 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		124E73622FEC871E007ACB07 /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 124E735D2FEC871E007ACB07 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+		124E73652FEC88CE007ACB07 /* RevenueCat */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 124E73642FEC88CE007ACB07 /* XCRemoteSwiftPackageReference "purchases-ios" */;
+			productName = RevenueCat;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 124E72732FDF6E35007ACB07 /* Project object */;
 }

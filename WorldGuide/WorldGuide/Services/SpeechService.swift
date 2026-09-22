@@ -8,12 +8,61 @@ import AVFoundation
 @MainActor
 final class SpeechService: NSObject, ObservableObject {
     private let synthesizer = AVSpeechSynthesizer()
+    private var audioPlayer: AVAudioPlayer?
+    private var playTask: Task<Void, Never>?
+    private var audioCache: [String: Data] = [:]   // url string -> mp3 bytes
 
     @Published var isSpeaking = false
+    @Published var isPreparing = false
 
     override init() {
         super.init()
         synthesizer.delegate = self
+    }
+
+    /// Plays the cached neural narration MP3 if available; otherwise falls back to the on-device
+    /// synthesizer (offline / audio not generated yet).
+    func playGuide(audioURL: String?, fallbackText: String) {
+        if isSpeaking || isPreparing { stop(); return }
+        if let audioURL, let url = URL(string: audioURL) {
+            play(url: url, cacheKey: audioURL, fallbackText: fallbackText)
+        } else {
+            speak(fallbackText)
+        }
+    }
+
+    /// Downloads the full MP3 then plays it with AVAudioPlayer — far more reliable than
+    /// streaming a remote URL via AVPlayer (which fails in the simulator). Caches the bytes.
+    private func play(url: URL, cacheKey: String, fallbackText: String) {
+        configureSession()
+        stopPlayback()
+        isPreparing = true
+        playTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let data: Data
+                if let cached = self.audioCache[cacheKey] {
+                    data = cached
+                } else {
+                    let (downloaded, _) = try await URLSession.shared.data(from: url)
+                    try Task.checkCancellation()
+                    self.audioCache[cacheKey] = downloaded
+                    data = downloaded
+                }
+                let player = try AVAudioPlayer(data: data)
+                player.delegate = self
+                self.audioPlayer = player
+                self.isPreparing = false
+                self.isSpeaking = true
+                player.play()
+            } catch is CancellationError {
+                // stopped before playback started
+            } catch {
+                print("audio play failed, falling back to on-device voice: \(error)")
+                self.isPreparing = false
+                self.speak(fallbackText)
+            }
+        }
     }
 
     func speak(_ text: String) {
@@ -30,13 +79,22 @@ final class SpeechService: NSObject, ObservableObject {
     }
 
     func stop() {
-        guard synthesizer.isSpeaking else { return }
-        synthesizer.stopSpeaking(at: .immediate)
+        if synthesizer.isSpeaking { synthesizer.stopSpeaking(at: .immediate) }
+        stopPlayback()
+        isSpeaking = false
+        isPreparing = false
     }
 
-    /// Play if idle, stop if currently speaking.
+    private func stopPlayback() {
+        playTask?.cancel()
+        playTask = nil
+        audioPlayer?.stop()
+        audioPlayer = nil
+    }
+
+    /// Play if idle, stop if currently speaking. (On-device voice only — kept for callers.)
     func toggle(_ text: String) {
-        if synthesizer.isSpeaking {
+        if isSpeaking {
             stop()
         } else {
             speak(text)
@@ -50,6 +108,12 @@ final class SpeechService: NSObject, ObservableObject {
         } catch {
             print("audio session error: \(error)")
         }
+    }
+}
+
+extension SpeechService: AVAudioPlayerDelegate {
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor in self.isSpeaking = false }
     }
 }
 

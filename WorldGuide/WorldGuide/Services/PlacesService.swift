@@ -7,6 +7,14 @@ import CoreLocation
 struct PlacesService {
     enum PlacesError: Error { case badResponse }
 
+    /// Tour-worthy place types, so the map favors landmarks/museums/parks over cafés & shops.
+    /// (Validated against Places API — all accepted.)
+    private static let tourTypes = [
+        "tourist_attraction", "museum", "art_gallery", "historical_landmark", "monument",
+        "cultural_landmark", "historical_place", "park", "national_park", "zoo", "aquarium",
+        "amusement_park", "church", "mosque", "synagogue", "hindu_temple"
+    ]
+
     func nearby(latitude: Double, longitude: Double, radius: Double = 500) async throws -> [Place] {
         let url = URL(string: "https://places.googleapis.com/v1/places:searchNearby")!
         var request = URLRequest(url: url)
@@ -24,6 +32,7 @@ struct PlacesService {
 
         let body: [String: Any] = [
             "maxResultCount": 20,
+            "includedTypes": Self.tourTypes,
             "locationRestriction": [
                 "circle": [
                     "center": ["latitude": latitude, "longitude": longitude],
