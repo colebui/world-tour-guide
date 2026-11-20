@@ -31,8 +31,15 @@ AI-generated guide (cached after the first view).
    `cp .firebaserc.example .firebaserc`
 5. **[you]** Log in once from the terminal (interactive): type
    `! firebase login` in the chat, or run `firebase login` in a terminal.
-6. **[you]** Set the OpenAI secret (interactive prompt for the value):
-   `! firebase functions:secrets:set OPENAI_API_KEY`
+6. **[you]** Set the backend secrets (each prompts for the value; they're stored in Google
+   Cloud Secret Manager, never in this repo):
+   ```
+   firebase functions:secrets:set OPENAI_API_KEY
+   firebase functions:secrets:set ELEVENLABS_API_KEY
+   firebase functions:secrets:set GOOGLE_API_KEY            # server-side Places key
+   firebase functions:secrets:set REVENUECAT_WEBHOOK_SECRET # RevenueCat webhook auth header
+   ```
+   Check them anytime with `firebase functions:secrets:get <NAME>`.
 7. Claude deploys: `firebase deploy --only functions` and `firebase deploy --only firestore:rules`.
 8. Copy the **function URL** Firebase prints (looks like
    `https://getplacecontent-xxxxxxxx-uc.a.run.app`) for step 5.
@@ -71,6 +78,15 @@ The files appear automatically in Xcode (synchronized folders).
    can see the document in the Firebase console under the `places` collection).
 
 ---
+
+## Where keys live
+| Key | Where it's stored | In git? |
+|---|---|---|
+| OpenAI, ElevenLabs, server Google key, RevenueCat webhook secret | Firebase Functions secrets (Google Cloud Secret Manager) | No |
+| On-device Google Places key, RevenueCat public `appl_` key, function URLs | `WorldGuide/WorldGuide/Secrets.swift` on your Mac (gitignored) | No |
+| Firebase iOS config (`WorldGuide/GoogleService-Info.plist`) and `.firebaserc` | Your Mac (gitignored; download the plist again from Firebase console → Project settings if lost). The plist's `API_KEY` ships inside the app, so it is also restricted to bundle ID `com.cole.WorldGuide` in Google Cloud → Credentials | No (only the `.example` templates) |
+
+Never commit `Secrets.swift`, `functions/.secret.local`, `.env*`, `.p8`/`.p12` keys or service-account JSON; `.gitignore` blocks them.
 
 ## Troubleshooting
 - **No pins:** check the Places key in `Secrets.swift` and that Places API (New) is
