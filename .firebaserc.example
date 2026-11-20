@@ -1,6 +1,6 @@
 {
   "projects": {
-    "staging": "world-guide-625a2"
+    "staging": "your-firebase-project-id"
   },
   "targets": {},
   "etags": {}

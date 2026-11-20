@@ -23,7 +23,7 @@ you walk) is planned (needs a physical device + paid Apple account).
 | Autocomplete | **MKLocalSearchCompleter** (Apple) | Free, nearby-biased type-ahead |
 | Directions | **Apple `MKDirections`** (walk/drive) + **Google Routes API** (transit) | In-app polyline + Apple Maps handoff |
 | Location | **Core Location** | When-in-use; recenter button |
-| Backend / DB / storage | **Firebase** (`world-guide-625a2`, Blaze) | Firestore + Cloud Functions + Storage |
+| Backend / DB / storage | **Firebase** (Blaze plan) | Firestore + Cloud Functions + Storage |
 | Content generation | **OpenAI** (gpt-4o, JSON mode, **streamed**) | Grounded in Wikipedia |
 | Fact grounding | **Wikipedia / Wikidata** | Geosearch + name-match → low hallucination |
 | Photos | **Wikimedia Commons** | Real licensed images (URLs hot-linked) |
