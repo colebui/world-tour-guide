@@ -26,7 +26,9 @@ AI-generated guide (cached after the first view).
 2. Upgrade to the **Blaze** plan (Settings → Usage and billing). Required for Cloud
    Functions; the free tier still covers light dev for ~$0.
 3. Copy your **Project ID** (Project settings → General).
-4. Tell Claude the Project ID — it will put it in `.firebaserc`.
+4. Create your local `.firebaserc` from the template and put the Project ID in it
+   (`.firebaserc` is gitignored):
+   `cp .firebaserc.example .firebaserc`
 5. **[you]** Log in once from the terminal (interactive): type
    `! firebase login` in the chat, or run `firebase login` in a terminal.
 6. **[you]** Set the OpenAI secret (interactive prompt for the value):
@@ -39,8 +41,12 @@ AI-generated guide (cached after the first view).
 1. Open Xcode → File → New → Project → iOS → **App** → Next.
 2. Product Name: **WorldGuide**, Interface: **SwiftUI**, Language: **Swift**.
 3. Organization identifier: set so the bundle ID matches step 1 (e.g. `com.cole`).
-4. Save **into** `/Users/coleopenclaw/Projects/world-guide` (so the project folder is
+4. Save **into** this repo's root folder (so the project folder is
    `.../world-guide/WorldGuide`).
+5. In the Firebase console, add an **iOS app** with your bundle ID and download its
+   `GoogleService-Info.plist`. Save it as `WorldGuide/GoogleService-Info.plist`
+   (gitignored; `WorldGuide/GoogleService-Info.example.plist` shows the expected shape).
+   Restrict its `API_KEY` in Google Cloud Console → Credentials to your iOS bundle ID.
 
 ## 4. Install the app code  **[Claude]**
 Run the installer (copies `ios-src/` into the project, removes the template
