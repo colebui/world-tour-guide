@@ -9,9 +9,21 @@ functions/lib/
 .env
 .env.local
 **/.secret.local
+.env.*
+**/.runtimeconfig.json
+# Private keys, certificates, service accounts
+*.p8
+*.p12
+*.pem
+*.key
+*.mobileprovision
+*service-account*.json
+*serviceAccount*.json
+*firebase-adminsdk*.json
 # ...but keep the committed templates
 !**/.secret.local.example
 !**/Secrets.example.swift
+!.env.example
 
 # macOS
 .DS_Store
