@@ -84,7 +84,7 @@ The files appear automatically in Xcode (synchronized folders).
 |---|---|---|
 | OpenAI, ElevenLabs, server Google key, RevenueCat webhook secret | Firebase Functions secrets (Google Cloud Secret Manager) | No |
 | On-device Google Places key, RevenueCat public `appl_` key, function URLs | `WorldGuide/WorldGuide/Secrets.swift` on your Mac (gitignored) | No |
-| Firebase iOS config (`GoogleService-Info.plist`) | Committed. Its `API_KEY` is a public client identifier that ships inside the app; protect it with API restrictions (iOS bundle ID + Firebase APIs only) in Google Cloud → Credentials, not by hiding it | Yes |
+| Firebase iOS config (`WorldGuide/GoogleService-Info.plist`) and `.firebaserc` | Your Mac (gitignored; download the plist again from Firebase console → Project settings if lost). The plist's `API_KEY` ships inside the app, so it is also restricted to bundle ID `com.cole.WorldGuide` in Google Cloud → Credentials | No (only the `.example` templates) |
 
 Never commit `Secrets.swift`, `functions/.secret.local`, `.env*`, `.p8`/`.p12` keys or service-account JSON; `.gitignore` blocks them.
 
