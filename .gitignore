@@ -34,3 +34,9 @@ xcuserdata/
 DerivedData/
 build/
 *.xcscmblueprint
+
+# Firebase project config — real copies stay local; templates are committed
+**/GoogleService-Info.plist
+.firebaserc
+!**/GoogleService-Info.example.plist
+!.firebaserc.example
